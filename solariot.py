@@ -149,8 +149,8 @@ def load_sma_register(registers):
       thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
       print( thiserrormessage)
       return  ## prevent further execution of this function
-    
-    message = BinaryPayloadDecoder.fromRegisters(received.registers, endian=Endian.Big)
+
+    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
     ## provide the correct result depending on the defined datatype
     if type == 'S32':
       interpreted = message.decode_32bit_int()
