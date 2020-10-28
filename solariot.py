@@ -37,7 +37,7 @@ from threading import Thread
 MIN_SIGNED   = -2147483648
 MAX_UNSIGNED =  4294967295
 
-requests.packages.urllib3.disable_warnings() 
+requests.packages.urllib3.disable_warnings()
 
 print ("Load config %s" % config.model)
 
@@ -60,24 +60,24 @@ modmap = __import__(modmap_file)
 # This will try the Sungrow client otherwise will default to the standard library.
 if 'sungrow-' in config.model:
     print ("Load SungrowModbusTcpClient")
-    client = SungrowModbusTcpClient.SungrowModbusTcpClient(host=config.inverter_ip, 
-                                            timeout=config.timeout, 
-                                            RetryOnEmpty=True, 
-                                            retries=3, 
+    client = SungrowModbusTcpClient.SungrowModbusTcpClient(host=config.inverter_ip,
+                                            timeout=config.timeout,
+                                            RetryOnEmpty=True,
+                                            retries=3,
                                             port=config.inverter_port)
 else:
     print ("Load ModbusTcpClient")
-    client = ModbusTcpClient(host=config.inverter_ip, 
-                             timeout=config.timeout, 
-                             RetryOnEmpty=True, 
-                             retries=3, 
+    client = ModbusTcpClient(host=config.inverter_ip,
+                             timeout=config.timeout,
+                             RetryOnEmpty=True,
+                             retries=3,
                              port=config.inverter_port)
 
 print("Connect")
 client.connect()
 client.close()
 
-try: 
+try:
   mqtt_client = mqtt.Client('pv_data')
   if 'config.mqtt_username' in globals():
       mqtt_client.username_pw_set(config.mqtt_username,config.mqtt_password)
@@ -102,12 +102,12 @@ bus = json.loads(modmap.scan)
 def load_registers(type,start,COUNT=100):
   try:
     if type == "read":
-      rr = client.read_input_registers(int(start), 
-                                       count=int(COUNT), 
+      rr = client.read_input_registers(int(start),
+                                       count=int(COUNT),
                                        unit=config.slave)
     elif type == "holding":
-      rr = client.read_holding_registers(int(start), 
-                                         count=int(COUNT), 
+      rr = client.read_holding_registers(int(start),
+                                         count=int(COUNT),
                                          unit=config.slave)
     if len(rr.registers) != int(COUNT):
       print("[WARN] Mismatched number ({}) of registers read".format(len(rr.registers)))
@@ -137,7 +137,7 @@ def load_sma_register(registers):
     startPos = thisrow[1]
     type = thisrow[2]
     format = thisrow[3]
-    
+
     ## if the connection is somehow not possible (e.g. target not responding)
     #  show a error message instead of excepting and stopping
     try:
@@ -168,7 +168,7 @@ def load_sma_register(registers):
       interpreted = message.decode_16bit_uint()
     else: ## if no data type is defined do raw interpretation of the delivered data
       interpreted = message.decode_16bit_uint()
-    
+
     ## check for "None" data before doing anything else
     if ((interpreted == MIN_SIGNED) or (interpreted == MAX_UNSIGNED)):
       displaydata = None
@@ -182,10 +182,10 @@ def load_sma_register(registers):
         displaydata = float(interpreted) / 10
       else:
         displaydata = interpreted
-    
+
     #print '************** %s = %s' % (name, str(displaydata))
     inverter[name] = displaydata
-  
+
   # Add timestamp
   inverter["00000 - Timestamp"] = str(datetime.datetime.now()).partition('.')[0]
 
@@ -211,13 +211,13 @@ while True:
   try:
     client.connect()
     inverter = {}
-    
+
     if 'sungrow-' in config.model:
       for i in bus['read']:
-        load_registers("read",i['start'],i['range']) 
+        load_registers("read",i['start'],i['range'])
       for i in bus['holding']:
-        load_registers("holding",i['start'],i['range']) 
-      
+        load_registers("holding",i['start'],i['range'])
+
       # Sungrow inverter specifics:
       # Work out if the grid power is being imported or exported
       if config.model == "sungrow-sh5k" and \
@@ -231,10 +231,10 @@ while True:
             inverter['hour'],
             inverter['minute'],
             inverter['second'])
-    
+
     if 'sma-' in config.model:
       load_sma_register(modmap.sma_registers)
-    
+
     print (inverter)
 
     if mqtt_client is not None:
