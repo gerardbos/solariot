@@ -264,11 +264,14 @@ while True:
             print("[WARN] configuration serial and Modbus serial are not equal (% != %)" % (serial, inverter["30057 - Serial number"]))
           serial = inverter["30057 - Serial number"]
 
-        metrics = {}
-        metrics['measurement'] = serial # Measurements are identified by the device serial number
-        metrics['fields'] = inverter
-        t = Thread(target=publish_influx, args=(metrics,))
-        t.start()
+        if serial is not None:
+          metrics = {}
+          metrics['measurement'] = serial # Measurements are identified by the device serial number
+          metrics['fields'] = inverter
+          t = Thread(target=publish_influx, args=(metrics,))
+          t.start()
+        else:
+          print("Serial required for influxdb (or in config, or in Modbus data")
       else:
         print("[WARN] No data from inverter")
     client.close()
