@@ -155,7 +155,7 @@ sma_registers = [
   ['40484 - Activation of active power gradient',40484,'U32','ENUM'],
   ['40497 - MAC address',40497,'STR32','UTF8'],
   ['40513 - Speedwire DNS server address',40513,'STR16','IP4'],
-#  ['40631 - Device name',40631,'STR32','UTF8'], # This one gives the utf8 decode error
+  ['40631 - Device name',40631,'STR32','UTF8'],
   ['40789 - Communication version',40789,'U32','REV'],
   ['40915 - Set active power limit (W)',40915,'U32','FIX0'],
 #  ['40999 - Setpoint cos(phi) as per EEI convention',40999,'S32','FIX4'], # Write only

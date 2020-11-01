@@ -77,9 +77,12 @@ print("Connect")
 client.connect()
 client.close()
 
+if not hasattr(config, 'dweepy_uuid'):
+    config.dweepy_uuid = None
+
 try:
   mqtt_client = mqtt.Client('pv_data')
-  if 'config.mqtt_username' in globals():
+  if hasattr(config, 'mqtt_username'):
       mqtt_client.username_pw_set(config.mqtt_username,config.mqtt_password)
   mqtt_client.connect(config.mqtt_server, port=config.mqtt_port)
 except:
@@ -180,10 +183,14 @@ def load_sma_register(registers):
         displaydata = float(interpreted) / 100
       elif format == 'FIX1':
         displaydata = float(interpreted) / 10
+      elif format == 'UTF8' or format == 'IP4':
+          interpreted = interpreted.split(b'\x00', 1)[0] #remove everything after \0
+          displaydata = interpreted.decode('utf-8')
+
       else:
         displaydata = interpreted
 
-    #print '************** %s = %s' % (name, str(displaydata))
+    #print('************** %s = %s' % (name, str(displaydata)))
     inverter[name] = displaydata
 
   # Add timestamp
@@ -197,14 +204,16 @@ def publish_dweepy(inverter):
   try:
     result = dweepy.dweet_for(config.dweepy_uuid,inverter)
     print("[INFO] Sent to dweet.io")
-  except:
+  except Exception as err:
+    print ("[ERROR] publish dweepy: %s" % err)
     result = None
 
 def publish_mqtt(inverter):
   try:
     result = mqtt_client.publish(config.mqtt_topic, json.dumps(inverter).replace('"', '\"'))
     print("[INFO] Published to MQTT")
-  except:
+  except Exception as err:
+    print ("[ERROR] publish mqtt: %s" % err)
     result = None
 
 while True:
@@ -235,29 +244,38 @@ while True:
     if 'sma-' in config.model:
       load_sma_register(modmap.sma_registers)
 
-    print (inverter)
+    #print(inverter)
 
-    if mqtt_client is not None:
-      t = Thread(target=publish_mqtt, args=(inverter,))
-      t.start()
+    if inverter: # Inverter data read (dictionary is not empty)
+      if mqtt_client is not None:
+        t = Thread(target=publish_mqtt, args=(inverter,))
+        t.start()
 
-    t = Thread(target=publish_dweepy, args=(inverter,))
-    t.start()
-    if flux_client is not None:
-      metrics = {}
-      tags = {}
-      fields = {}
-      metrics['measurement'] = "Sungrow"
-      tags['location'] = "Gabba"
-      metrics['tags'] = tags
-      metrics['fields'] = inverter
-      t = Thread(target=publish_influx, args=(metrics,))
-      t.start()
+      if config.dweepy_uuid is not None:
+          t = Thread(target=publish_dweepy, args=(inverter,))
+          t.start()
+
+      if flux_client is not None:
+        serial = None
+        if hasattr(config, 'inverter_serial'):
+          serial = config.inverter_serial
+        if '30057 - Serial number' in inverter:
+          if serial is not None and serial != inverter["30057 - Serial number"]:
+            print("[WARN] configuration serial and Modbus serial are not equal (% != %)" % (serial, inverter["30057 - Serial number"]))
+          serial = inverter["30057 - Serial number"]
+
+        metrics = {}
+        metrics['measurement'] = serial # Measurements are identified by the device serial number
+        metrics['fields'] = inverter
+        t = Thread(target=publish_influx, args=(metrics,))
+        t.start()
+      else:
+        print("[WARN] No data from inverter")
     client.close()
 
   except Exception as err:
     #Enable for debugging, otherwise it can be noisy and display false positives:
-    #print ("[ERROR] %s" % err)
+    print ("[ERROR] %s" % err)
     client.close()
     client.connect()
   time.sleep(config.scan_interval)
