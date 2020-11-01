@@ -23,11 +23,8 @@
 from pymodbus.payload import BinaryPayloadDecoder
 from pymodbus.constants import Endian
 from pymodbus.client.sync import ModbusTcpClient
-from SungrowModbusTcpClient import SungrowModbusTcpClient
 from influxdb import InfluxDBClient
-import paho.mqtt.client as mqtt
 import config
-import dweepy
 import json
 import time
 import datetime
@@ -58,74 +55,26 @@ modmap_file = "modbus-" + config.model
 modmap = __import__(modmap_file)
 
 # This will try the Sungrow client otherwise will default to the standard library.
-if 'sungrow-' in config.model:
-    print ("Load SungrowModbusTcpClient")
-    client = SungrowModbusTcpClient.SungrowModbusTcpClient(host=config.inverter_ip,
-                                            timeout=config.timeout,
-                                            RetryOnEmpty=True,
-                                            retries=3,
-                                            port=config.inverter_port)
-else:
-    print ("Load ModbusTcpClient")
-    client = ModbusTcpClient(host=config.inverter_ip,
-                             timeout=config.timeout,
-                             RetryOnEmpty=True,
-                             retries=3,
-                             port=config.inverter_port)
+print ("Load ModbusTcpClient")
+client = ModbusTcpClient(host=config.inverter_ip,
+                         timeout=config.timeout,
+                         RetryOnEmpty=True,
+                         retries=3,
+                         port=config.inverter_port)
 
 print("Connect")
 client.connect()
 client.close()
 
-if not hasattr(config, 'dweepy_uuid'):
-    config.dweepy_uuid = None
-
-try:
-  mqtt_client = mqtt.Client('pv_data')
-  if hasattr(config, 'mqtt_username'):
-      mqtt_client.username_pw_set(config.mqtt_username,config.mqtt_password)
-  mqtt_client.connect(config.mqtt_server, port=config.mqtt_port)
-except:
-  mqtt_client = None
-
-try:
-  flux_client = InfluxDBClient(config.influxdb_ip,
-                               config.influxdb_port,
-                               config.influxdb_user,
-                               config.influxdb_password,
-                               config.influxdb_database,
-                               ssl=config.influxdb_ssl,
-                               verify_ssl=config.influxdb_verify_ssl)
-except:
-  flux_client = None
-
+flux_client = InfluxDBClient(config.influxdb_ip,
+                           config.influxdb_port,
+                           config.influxdb_user,
+                           config.influxdb_password,
+                           config.influxdb_database,
+                           ssl=config.influxdb_ssl,
+                           verify_ssl=config.influxdb_verify_ssl)
 inverter = {}
 bus = json.loads(modmap.scan)
-
-def load_registers(type,start,COUNT=100):
-  try:
-    if type == "read":
-      rr = client.read_input_registers(int(start),
-                                       count=int(COUNT),
-                                       unit=config.slave)
-    elif type == "holding":
-      rr = client.read_holding_registers(int(start),
-                                         count=int(COUNT),
-                                         unit=config.slave)
-    if len(rr.registers) != int(COUNT):
-      print("[WARN] Mismatched number ({}) of registers read".format(len(rr.registers)))
-      return
-    for num in range(0, int(COUNT)):
-      run = int(start) + num + 1
-      if type == "read" and modmap.read_register.get(str(run)):
-        if '_10' in modmap.read_register.get(str(run)):
-          inverter[modmap.read_register.get(str(run))[:-3]] = float(rr.registers[num])/10
-        else:
-          inverter[modmap.read_register.get(str(run))] = rr.registers[num]
-      elif type == "holding" and modmap.holding_register.get(str(run)):
-        inverter[modmap.holding_register.get(str(run))] = rr.registers[num]
-  except Exception as err:
-    print("[WARN] No data. Try increasing the timeout or scan interval.")
 
 ## function for polling data from the target and triggering writing to log file if set
 #
@@ -200,46 +149,10 @@ def publish_influx(metrics):
   target=flux_client.write_points([metrics])
   print ("[INFO] Sent to InfluxDB")
 
-def publish_dweepy(inverter):
-  try:
-    result = dweepy.dweet_for(config.dweepy_uuid,inverter)
-    print("[INFO] Sent to dweet.io")
-  except Exception as err:
-    print ("[ERROR] publish dweepy: %s" % err)
-    result = None
-
-def publish_mqtt(inverter):
-  try:
-    result = mqtt_client.publish(config.mqtt_topic, json.dumps(inverter).replace('"', '\"'))
-    print("[INFO] Published to MQTT")
-  except Exception as err:
-    print ("[ERROR] publish mqtt: %s" % err)
-    result = None
-
 while True:
   try:
     client.connect()
     inverter = {}
-
-    if 'sungrow-' in config.model:
-      for i in bus['read']:
-        load_registers("read",i['start'],i['range'])
-      for i in bus['holding']:
-        load_registers("holding",i['start'],i['range'])
-
-      # Sungrow inverter specifics:
-      # Work out if the grid power is being imported or exported
-      if config.model == "sungrow-sh5k" and \
-        inverter['grid_import_or_export'] == 65535:
-          export_power = (65535 - inverter['export_power']) * -1
-          inverter['export_power'] = export_power
-          inverter['timestamp'] = "%s/%s/%s %s:%02d:%02d" % (
-            inverter['day'],
-            inverter['month'],
-            inverter['year'],
-            inverter['hour'],
-            inverter['minute'],
-            inverter['second'])
 
     if 'sma-' in config.model:
       load_sma_register(modmap.sma_registers)
@@ -247,14 +160,6 @@ while True:
     #print(inverter)
 
     if inverter: # Inverter data read (dictionary is not empty)
-      if mqtt_client is not None:
-        t = Thread(target=publish_mqtt, args=(inverter,))
-        t.start()
-
-      if config.dweepy_uuid is not None:
-          t = Thread(target=publish_dweepy, args=(inverter,))
-          t.start()
-
       if flux_client is not None:
         serial = None
         if hasattr(config, 'inverter_serial'):
