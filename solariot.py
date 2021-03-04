@@ -149,6 +149,8 @@ def publish_influx(metrics):
   target=flux_client.write_points([metrics])
   print ("[INFO] Sent to InfluxDB")
 
+time_nextmeas = datetime.datetime.now()
+time_increment = datetime.timedelta(seconds=config.scan_interval)
 while True:
   try:
     client.connect()
@@ -186,4 +188,10 @@ while True:
     print ("[ERROR] %s" % err)
     client.close()
     client.connect()
-  time.sleep(config.scan_interval)
+
+  sleeptime = (time_nextmeas - datetime.datetime.now()).total_seconds()
+  print(sleeptime)
+  print(datetime.datetime.now())
+  if sleeptime > 0: 
+    time.sleep(sleeptime)
+  time_nextmeas += time_increment
